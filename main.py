@@ -3,7 +3,7 @@ import urllib.parse
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
-TOKEN = os.environ.get("8893604989:AAGCdbkeZbaVWWkdEmfvRW-b9z9xLhJXGrk")
+TOKEN = "8893604989:AAGCdbkeZbaVWWkdEmfvRW-b9z9xLhJXGrk"
 
 # Conversation handler holatlari
 MANZIL_KIRITISH, TARQATISH = range(2)
