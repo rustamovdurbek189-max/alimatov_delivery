@@ -1,19 +1,32 @@
 import os
 import math
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+import asyncio
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
-TOKEN = "8910663587:AAFGJKbqjjPrZIJ2n8qxCFn-RVOqsW0h5o4"
+TOKEN = os.environ.get("BOT_TOKEN")
+
+# Dummy HTTP Server (Render port topishi uchun)
+class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot ishlamoqda!")
+
+def run_http_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
+    server.serve_forever()
 
 # Conversation handler holatlari
 MANZIL_KIRITISH, POST_LOKATSIYA, TARQATISH = range(3)
 
-# Ma'lumotlarni xotirada saqlash uchun
 user_data_store = {}
 
 def get_distance(lat1, lon1, lat2, lon2):
-    """Ikki nuqta orasidagi masofani hisoblash (Haversine formulasi)"""
-    R = 6371  # Yer radiusi (km)
+    R = 6371
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
     a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
@@ -103,7 +116,6 @@ async def process_next_delivery(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text("🎉 **Bugungi missiya yakunlandi!** Barcha yuklar o'z egalariga yetkazildi.", reply_markup=reply_markup)
         return ConversationHandler.END
 
-    # Eng yaqin manzilni hisoblash
     nearest_idx = 0
     min_dist = float('inf')
     
@@ -132,6 +144,9 @@ async def process_next_delivery(update: Update, context: ContextTypes.DEFAULT_TY
     return TARQATISH
 
 def main():
+    # Render portini ushlab turish uchun HTTP serverni fonda yoqamiz
+    threading.Thread(target=run_http_server, daemon=True).start()
+
     app = Application.builder().token(TOKEN).build()
 
     conv_handler = ConversationHandler(
@@ -156,3 +171,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+   
+   
+
+
