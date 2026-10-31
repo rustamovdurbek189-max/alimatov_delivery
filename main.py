@@ -1,138 +1,87 @@
 import os
-import math
-import asyncio
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
+import urllib.parse
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
-TOKEN = os.environ.get("BOT_TOKEN")
-
-# Dummy HTTP Server (Render port topishi uchun)
-class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot ishlamoqda!")
-
-def run_http_server():
-    port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
-    server.serve_forever()
+TOKEN = os.environ.get("8893604989:AAGCdbkeZbaVWWkdEmfvRW-b9z9xLhJXGrk")
 
 # Conversation handler holatlari
-MANZIL_KIRITISH, POST_LOKATSIYA, TARQATISH = range(3)
+MANZIL_KIRITISH, TARQATISH = range(2)
 
 user_data_store = {}
 
-def get_distance(lat1, lon1, lat2, lon2):
-    R = 6371
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return R * c
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    user_data_store[user_id] = {'locations': []}
+    user_data_store[user_id] = {'addresses': []}
     
     keyboard = [["➕ Manzil kiritish"], ["🚚 Yuklarni tarqatishni boshlash"]]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
     await update.message.reply_text(
         "Xush kelibsiz! Yetkazib berish botiga xush kelibsiz.\n\n"
-        "Yangi yuklarni kiritish uchun '➕ Manzil kiritish' tugmasini bosing.",
+        "Yangi yuk manzillarini kiritish uchun '➕ Manzil kiritish' tugmasini bosing.",
         reply_markup=reply_markup
     )
     return ConversationHandler.END
 
 async def start_kiritish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Manzilni kiriting.\n\n"
-        "📌 **Muhim:** Aniqroq marshrut tuzish uchun ushbu nuqtaning **Telegram Geolokatsiyasini (Location)** yuboring.\n\n"
-        "Barcha manzillarni yuborib bo'lgach '✅ Kiritishni tugatish' tugmasini bosing.",
+        "Manzillarni matn ko'rinishida kiriting (Masalan: Shahriobod 320).\n\n"
+        "Barcha manzillarni birma-bir yuborib bo'lgach '✅ Kiritishni tugatish' tugmasini bosing.",
         reply_markup=ReplyKeyboardMarkup([["✅ Kiritishni tugatish"]], resize_keyboard=True)
     )
     return MANZIL_KIRITISH
 
-async def add_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def add_address(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if user_id not in user_data_store:
-        user_data_store[user_id] = {'locations': []}
+        user_data_store[user_id] = {'addresses': []}
         
-    if update.message.location:
-        lat = update.message.location.latitude
-        lon = update.message.location.longitude
-        user_data_store[user_id]['locations'].append({'lat': lat, 'lon': lon})
-        count = len(user_data_store[user_id]['locations'])
-        await update.message.reply_text(f"📍 Location qabul qilindi! Jami kiritilgan manzillar: {count} ta.")
-    else:
-        text = update.message.text
-        if text == "✅ Kiritishni tugatish":
-            keyboard = [["🚚 Yuklarni tarqatishni boshlash"]]
-            await update.message.reply_text(
-                "Barcha manzillar saqlandi!\n\n"
-                "Toshkent shahri kirish postiga yetib kelganingizda '🚚 Yuklarni tarqatishni boshlash' tugmasini bosing.",
-                reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-            )
-            return ConversationHandler.END
-        
-        await update.message.reply_text("Iltimos, manzil aniq bo'lishi uchun Telegram orqali **Location (Geolokatsiya)** yuboring.")
+    text = update.message.text.strip()
+    
+    if text == "✅ Kiritishni tugatish":
+        keyboard = [["🚚 Yuklarni tarqatishni boshlash"]]
+        await update.message.reply_text(
+            f"Barcha manzillar saqlandi! Jami: {len(user_data_store[user_id]['addresses'])} ta manzil.\n\n"
+            "Toshkent shahri kirish postiga yetib kelganingizda '🚚 Yuklarni tarqatishni boshlash' tugmasini bosing.",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
+        return ConversationHandler.END
+    
+    user_data_store[user_id]['addresses'].append(text)
+    count = len(user_data_store[user_id]['addresses'])
+    await update.message.reply_text(f"📍 Manzil saqlandi: '{text}'. Jami kiritilgan manzillar: {count} ta.")
     return MANZIL_KIRITISH
 
 async def start_delivery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    if user_id not in user_data_store or not user_data_store[user_id]['locations']:
+    if user_id not in user_data_store or not user_data_store[user_id]['addresses']:
         await update.message.reply_text("Hali hech qanday manzil kiritilmagan! Avval '➕ Manzil kiritish' tugmasi orqali manzillarni kiriting.")
         return ConversationHandler.END
 
-    loc_button = KeyboardButton("📍 Hozirgi joylashuvimni yuborish (Post)", request_location=True)
-    reply_markup = ReplyKeyboardMarkup([[loc_button]], resize_keyboard=True, one_time_keyboard=True)
-    
-    await update.message.reply_text(
-        "Toshkent shahri kirish postiga yetib kelgan bo'lsangiz, pastdagi tugmani bosib hozirgi joylashuvingizni (Location) yuboring:",
-        reply_markup=reply_markup
-    )
-    return POST_LOKATSIYA
+    await update.message.reply_text("Toshkentga xush kelibsiz! Tarqatishni boshlaymiz.")
+    return await process_next_delivery(update, context)
 
 async def process_next_delivery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
+    addresses = user_data_store[user_id]['addresses']
     
-    if update.message.location:
-        curr_lat = update.message.location.latitude
-        curr_lon = update.message.location.longitude
-        user_data_store[user_id]['last_pos'] = (curr_lat, curr_lon)
-    elif 'last_pos' in user_data_store[user_id]:
-        curr_lat, curr_lon = user_data_store[user_id]['last_pos']
-    else:
-        await update.message.reply_text("Joylashuv aniqlanmadi. Qaytadan harakat qilib ko'ring.")
-        return ConversationHandler.END
-
-    locations = user_data_store[user_id]['locations']
-    
-    if not locations:
+    if not addresses:
         reply_markup = ReplyKeyboardMarkup([["➕ Manzil kiritish"]], resize_keyboard=True)
         await update.message.reply_text("🎉 **Bugungi missiya yakunlandi!** Barcha yuklar o'z egalariga yetkazildi.", reply_markup=reply_markup)
         return ConversationHandler.END
 
-    nearest_idx = 0
-    min_dist = float('inf')
-    
-    for idx, loc in enumerate(locations):
-        dist = get_distance(curr_lat, curr_lon, loc['lat'], loc['lon'])
-        if dist < min_dist:
-            min_dist = dist
-            nearest_idx = idx
+    # Navbatdagi manzilni olish
+    next_address = addresses.pop(0)
 
-    nearest = locations.pop(nearest_idx)
-    user_data_store[user_id]['last_pos'] = (nearest['lat'], nearest['lon'])
-
-    yandex_link = f"https://yandex.ru/navi/?whatshere[point]={nearest['lon']},{nearest['lat']}&whatshere[zoom]=18"
+    # Yandex Navigator / Maps uchun qidiruv linkini tayyorlash
+    query = f"Tashkent {next_address}"
+    encoded_query = urllib.parse.quote(query)
+    yandex_link = f"https://yandex.ru/maps/?text={encoded_query}"
     
     msg = (
-        f"📦 **Navbatdagi eng yaqin manzil:**\n"
-        f"📏 Masofa: taxminan {min_dist:.2f} km\n\n"
+        f"📦 **Navbatdagi manzil:**\n"
+        f"🏠 **{next_address}**\n\n"
         f"🗺 [Yandex Navigatorda ochish]({yandex_link})\n\n"
         f"Yukni topshirganingizdan so'ng **'✅ Yetkazildi'** tugmasini bosing."
     )
@@ -144,9 +93,6 @@ async def process_next_delivery(update: Update, context: ContextTypes.DEFAULT_TY
     return TARQATISH
 
 def main():
-    # Render portini ushlab turish uchun HTTP serverni fonda yoqamiz
-    threading.Thread(target=run_http_server, daemon=True).start()
-
     app = Application.builder().token(TOKEN).build()
 
     conv_handler = ConversationHandler(
@@ -156,8 +102,7 @@ def main():
             MessageHandler(filters.Regex("^✅ Yetkazildi$"), process_next_delivery)
         ],
         states={
-            MANZIL_KIRITISH: [MessageHandler(filters.LOCATION | filters.TEXT, add_location)],
-            POST_LOKATSIYA: [MessageHandler(filters.LOCATION, process_next_delivery)],
+            MANZIL_KIRITISH: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_address)],
             TARQATISH: [MessageHandler(filters.Regex("^✅ Yetkazildi$"), process_next_delivery)]
         },
         fallbacks=[CommandHandler("start", start)]
@@ -171,8 +116,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
-   
-   
-
-
